@@ -13,10 +13,10 @@ on what marks are and for notes on using_ them.
 .. _using: https://pytest.org/en/latest/example/markers.html#marking-whole-classes-or-modules
 
 
-``pytest.mark.django_db(transaction=False)`` - request database access
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+``pytest.mark.django_db`` - request database access
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. :py:function:: pytest.mark.django_db:
+.. :py:function:: pytest.mark.django_db([transaction=False, reset_sequences=False]):
 
 This is used to mark a test function as requiring the database. It
 will ensure the database is set up correctly for the test. Each test
@@ -25,9 +25,9 @@ of the test. This behavior is the same as Django's standard
 `django.test.TestCase`_ class.
 
 In order for a test to have access to the database it must either
-be marked using the ``django_db`` mark or request one of the ``db``
-or ``transactional_db`` fixtures.  Otherwise the test will fail
-when trying to access the database.
+be marked using the ``django_db`` mark or request one of the ``db``,
+``transactional_db`` or ``django_db_reset_sequences`` fixtures.  Otherwise the
+test will fail when trying to access the database.
 
 :type transaction: bool
 :param transaction:
@@ -38,14 +38,23 @@ when trying to access the database.
  uses. When ``transaction=True``, the behavior will be the same as
  `django.test.TransactionTestCase`_
 
+
+:type reset_sequences: bool
+:param reset_sequences:
+ The ``reset_sequences`` argument will ask to reset auto increment sequence
+ values (e.g. primary keys) before running the test.  Defaults to
+ ``False``.  Must be used together with ``transaction=True`` to have an
+ effect.  Please be aware that not all databases support this feature.
+ For details see :py:attr:`django.test.TransactionTestCase.reset_sequences`.
+
 .. note::
 
   If you want access to the Django database *inside a fixture*
   this marker will not help even if the function requesting your
   fixture has this marker applied.  To access the database in a
-  fixture, the fixture itself will have to request the ``db`` or
-  ``transactional_db`` fixture.  See below for a description of
-  them.
+  fixture, the fixture itself will have to request the ``db``,
+  ``transactional_db`` or ``django_db_reset_sequences`` fixture.  See below
+  for a description of them.
 
 .. note:: Automatic usage with ``django.test.TestCase``.
 
@@ -65,7 +74,7 @@ when trying to access the database.
 
    Specify a different ``settings.ROOT_URLCONF`` module for the marked tests.
 
-   :type urls: string
+   :type urls: str
    :param urls:
      The urlconf module to use for the test, e.g. ``myapp.test_urls``.  This is
      similar to Django's ``TestCase.urls`` attribute.
@@ -82,10 +91,12 @@ when trying to access the database.
 
 .. py:function:: pytest.mark.ignore_template_errors
 
-  If you run pytest using the ``--fail-on-template-vars`` option,
-  tests will fail should your templates contain any invalid variables.
-  This marker will disable this feature by setting ``settings.TEMPLATE_STRING_IF_INVALID=None``
-  or the ``string_if_invalid`` template option
+  Ignore errors when using the ``--fail-on-template-vars`` option, i.e.
+  do not cause tests to fail if your templates contain invalid variables.
+
+  This marker sets the ``string_if_invalid`` template option, or
+  the older ``settings.TEMPLATE_STRING_IF_INVALID=None`` (Django up to 1.10).
+  See :ref:`django:invalid-template-variables`.
 
   Example usage::
 
@@ -144,7 +155,7 @@ To use `client` as an authenticated standard user, call its `login()` method bef
     def test_with_authenticated_client(client, django_user_model):
         username = "user1"
         password = "bar"
-        django_user_model.objects.create(username=username, password=password)
+        django_user_model.objects.create_user(username=username, password=password)
         client.login(username=username, password=password)
         response = client.get('/private')
         assert response.content == 'Protected Area'
@@ -167,8 +178,8 @@ Example
 Using the `admin_client` fixture will cause the test to automatically be marked for database use (no need to specify the
 ``django_db`` mark).
 
-``admin_user`` - a admin user (superuser)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+``admin_user`` - an admin user (superuser)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 An instance of a superuser, with username "admin" and password "password" (in
 case there is no "admin" user yet).
@@ -207,7 +218,7 @@ is configured to be in the containing Django project.
 
 This fixture will ensure the Django database is set up.  Only
 required for fixtures that want to use the database themselves.  A
-test function should normally use the :py:func:`~pytest.mark.django_db`
+test function should normally use the ``pytest.mark.django_db``
 mark to signal it needs the database.
 
 ``transactional_db``
@@ -215,8 +226,19 @@ mark to signal it needs the database.
 
 This fixture can be used to request access to the database including
 transaction support.  This is only required for fixtures which need
-database access themselves.  A test function would normally use the
-:py:func:`~pytest.mark.django_db` mark to signal it needs the database.
+database access themselves.  A test function should normally use the
+``pytest.mark.django_db``  mark with ``transaction=True``.
+
+``django_db_reset_sequences``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. fixture:: django_db_reset_sequences
+
+This fixture provides the same transactional database access as
+``transactional_db``, with additional support for reset of auto increment
+sequences (if your database supports it). This is only required for
+fixtures which need database access themselves. A test function should
+normally use the ``pytest.mark.django_db`` mark with ``transaction=True`` and ``reset_sequences=True``.
 
 ``live_server``
 ~~~~~~~~~~~~~~~
@@ -226,6 +248,18 @@ server's URL can be retrieved using the ``live_server.url`` attribute
 or by requesting it's string value: ``unicode(live_server)``.  You can
 also directly concatenate a string to form a URL: ``live_server +
 '/foo``.
+
+.. note:: Combining database access fixtures.
+
+  When using multiple database fixtures together, only one of them is
+  used.  Their order of precedence is as follows (the last one wins):
+
+  * ``db``
+  * ``transactional_db``
+  * ``django_db_reset_sequences``
+
+  In addition, using ``live_server`` will also trigger transactional
+  database access, if not specified.
 
 ``settings``
 ~~~~~~~~~~~~
@@ -244,27 +278,57 @@ Example
         assert settings.USE_TZ
 
 
+.. fixture:: django_assert_num_queries
+
 ``django_assert_num_queries``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+.. py:function:: django_assert_num_queries(connection=None, info=None)
+
+  :param connection: optional non-default DB connection
+  :param str info: optional info message to display on failure
+
 This fixture allows to check for an expected number of DB queries.
-It currently only supports the default database.
+
+It wraps `django.test.utils.CaptureQueriesContext` and yields the wrapped
+CaptureQueriesContext instance.
 
 
-Example
-"""""""
-
-::
+Example usage::
 
     def test_queries(django_assert_num_queries):
-        with django_assert_num_queries(3):
+        with django_assert_num_queries(3) as captured:
             Item.objects.create('foo')
             Item.objects.create('bar')
             Item.objects.create('baz')
 
+        assert 'foo' in captured.captured_queries[0]['sql']
+
+
+.. fixture:: django_assert_max_num_queries
+
+``django_assert_max_num_queries``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. py:function:: django_assert_num_queries(connection=None, info=None)
+
+  :param connection: optional non-default DB connection
+  :param str info: optional info message to display on failure
+
+This fixture allows to check for an expected maximum number of DB queries.
+
+It is a specialized version of :fixture:`django_assert_num_queries`.
+
+Example usage::
+
+    def test_max_queries(django_assert_max_num_queries):
+        with django_assert_max_num_queries(3):
+            Item.objects.create('foo')
+            Item.objects.create('bar')
+
 
 ``mailoutbox``
-~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~
 
 A clean email outbox to which Django-generated emails are sent.
 
@@ -283,6 +347,12 @@ Example
         assert m.body == 'body'
         assert m.from_email == 'from@example.com'
         assert list(m.to) == ['to@example.com']
+
+
+This uses the ``django_mail_patch_dns`` fixture, which patches
+``DNS_NAME`` used by :py:mod:`django.core.mail` with the value from
+the ``django_mail_dnsname`` fixture, which defaults to
+"fake-tests.example.com".
 
 
 Automatic cleanup
