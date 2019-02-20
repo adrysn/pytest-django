@@ -3,16 +3,14 @@
 from __future__ import with_statement
 
 import os
+import warnings
+from contextlib import contextmanager
 from functools import partial
 
 import pytest
 
-from contextlib import contextmanager
-
 from . import live_server_helper
-
 from .django_compat import is_django_unittest
-
 from .lazy_django import skip_if_no_django
 
 __all__ = [
@@ -105,14 +103,14 @@ def django_db_setup(
 
     with django_db_blocker.unblock():
         db_cfg = setup_databases(
-            verbosity=pytest.config.option.verbose,
+            verbosity=request.config.option.verbose,
             interactive=False,
             **setup_databases_args
         )
 
     def teardown_database():
         with django_db_blocker.unblock():
-            teardown_databases(db_cfg, verbosity=pytest.config.option.verbose)
+            teardown_databases(db_cfg, verbosity=request.config.option.verbose)
 
     if not django_db_keepdb:
         request.addfinalizer(teardown_database)
@@ -254,15 +252,16 @@ def admin_user(db, django_user_model, django_username_field):
     """
     UserModel = django_user_model
     username_field = django_username_field
+    username = "admin@example.com" if username_field == "email" else "admin"
 
     try:
-        user = UserModel._default_manager.get(**{username_field: "admin"})
+        user = UserModel._default_manager.get(**{username_field: username})
     except UserModel.DoesNotExist:
         extra_fields = {}
-        if username_field != "username":
+        if username_field not in ("username", "email"):
             extra_fields[username_field] = "admin"
         user = UserModel._default_manager.create_superuser(
-            "admin", "admin@example.com", "password", **extra_fields
+            username, "admin@example.com", "password", **extra_fields
         )
     return user
 
@@ -362,11 +361,10 @@ def live_server(request):
         if django.VERSION >= (1, 11):
             ports = addr.split(":")[1]
             if "-" in ports or "," in ports:
-                request.config.warn(
-                    "D001",
+                warnings.warn(
                     "Specifying multiple live server ports is not supported "
                     "in Django 1.11. This will be an error in a future "
-                    "pytest-django release.",
+                    "pytest-django release."
                 )
 
     if not addr:

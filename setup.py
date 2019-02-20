@@ -40,10 +40,8 @@ setup(
             'sphinx_rtd_theme',
         ],
         'testing': [
-            'pytest>=3.6',
             'Django',
             'django-configurations>=2.0',
-            'pytest-xdist>=1.15',
             'six',
         ],
     },
@@ -55,6 +53,7 @@ setup(
                  'Framework :: Django :: 1.11',
                  'Framework :: Django :: 2.0',
                  'Framework :: Django :: 2.1',
+                 'Framework :: Django :: 2.2',
                  'Intended Audience :: Developers',
                  'License :: OSI Approved :: BSD License',
                  'Operating System :: OS Independent',

@@ -12,6 +12,7 @@ import sys
 import types
 
 import pytest
+from pkg_resources import parse_version
 
 from .django_compat import is_django_unittest  # noqa
 from .fixtures import django_assert_num_queries  # noqa
@@ -48,6 +49,9 @@ CONFIGURATION_ENV = "DJANGO_CONFIGURATION"
 INVALID_TEMPLATE_VARS_ENV = "FAIL_INVALID_TEMPLATE_VARS"
 
 PY2 = sys.version_info[0] == 2
+
+# pytest 4.2 handles unittest setup/teardown itself via wrapping fixtures.
+_handle_unittest_methods = parse_version(pytest.__version__) < parse_version("4.2")
 
 
 # ############### pytest hooks ################
@@ -185,8 +189,11 @@ def _add_django_project_to_path(args):
         args = map(str, args)
         args = [arg_to_path(x) for x in args if not x.startswith("-")]
 
+        cwd = pathlib.Path.cwd()
         if not args:
-            args = [pathlib.Path.cwd()]
+            args.append(cwd)
+        elif cwd not in args:
+            args.append(cwd)
 
         for arg in args:
             if is_django_project(arg):
@@ -416,9 +423,9 @@ def _restore_class_methods(cls):
 
 
 def pytest_runtest_setup(item):
-    if django_settings_is_configured() and is_django_unittest(item):
-        cls = item.cls
-        _disable_class_methods(cls)
+    if _handle_unittest_methods:
+        if django_settings_is_configured() and is_django_unittest(item):
+            _disable_class_methods(item.cls)
 
 
 @pytest.fixture(autouse=True, scope="session")
@@ -514,16 +521,19 @@ def _django_setup_unittest(request, django_db_blocker):
 
         cls.debug = _cleaning_debug
 
-        _restore_class_methods(cls)
-        cls.setUpClass()
-        _disable_class_methods(cls)
-
-        def teardown():
+        if _handle_unittest_methods:
             _restore_class_methods(cls)
-            cls.tearDownClass()
-            django_db_blocker.restore()
+            cls.setUpClass()
+            _disable_class_methods(cls)
 
-        request.addfinalizer(teardown)
+            def teardown():
+                _restore_class_methods(cls)
+                cls.tearDownClass()
+                django_db_blocker.restore()
+
+            request.addfinalizer(teardown)
+        else:
+            request.addfinalizer(django_db_blocker.restore)
 
 
 @pytest.fixture(scope="function", autouse=True)

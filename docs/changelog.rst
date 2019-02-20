@@ -10,6 +10,43 @@ Features
 * Added a new option `--django-debug` to set the DEBUG setting to True prior to
   running tests.
 
+3.4.7 (2019-02-03)
+------------------
+
+Bugfixes
+^^^^^^^^
+
+* Fix disabling/handling of unittest methods with pytest 4.2+ (#700)
+
+3.4.6 (2019-02-01)
+------------------
+
+Bugfixes
+^^^^^^^^
+
+* django_find_project: add cwd as fallback always (#690)
+
+Misc
+^^^^
+
+* Enable tests for Django 2.2 and add classifier (#693)
+* Disallow pytest 4.2.0 in ``install_requires`` (#697)
+
+3.4.5 (2019-01-07)
+------------------
+
+Bugfixes
+^^^^^^^^
+
+* Use ``request.config`` instead of ``pytest.config`` (#677)
+* :fixture:`admin_user`: handle "email" username_field (#676)
+
+Misc
+^^^^
+
+* Minor doc fixes (#674)
+* tests: fix for pytest 4 (#675)
+
 3.4.4 (2018-11-13)
 ------------------
 
